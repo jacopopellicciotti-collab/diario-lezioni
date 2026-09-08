@@ -8,7 +8,7 @@ const UI = {
     const ids = [
       "authBar", "loginBtn", "loadingMsg", "emptyMsg", "hoursList",
       "selectedDateLabel", "prevDayBtn", "todayBtn", "nextDayBtn",
-      "calToggleBtn", "settingsBtn", "calendarPanel",
+      "calToggleBtn", "settingsBtn", "calendarPanel", "calResizer",
       "calPrevMonth", "calNextMonth", "calMonthLabel", "miniCalGrid",
       "mergeBar", "mergeBarLabel", "mergeBtn", "mergeCancelBtn",
       "quickMenu", "noteModal", "noteModalTitle", "noteModalSubtitle", "noteText",

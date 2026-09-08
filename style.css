@@ -1,9 +1,13 @@
 :root {
-  --bg: #f7f7f5;
+  --bg: #e9e8e4;
   --surface: #ffffff;
   --text: #1f1f1f;
   --text-dim: #6b6b6b;
-  --border: #e2e0db;
+  --border: #d6d4ce;
+  --panel-border: #b9b6ae;
+  --topbar-bg: #b3261e;
+  --topbar-text: #ffffff;
+  --cal-width: 280px;
   --accent: #3f51b5;
   --accent-contrast: #ffffff;
   --danger: #d60000;
@@ -13,11 +17,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17171a;
+    --bg: #131316;
     --surface: #232327;
     --text: #f1f1ef;
     --text-dim: #a3a3a3;
     --border: #35353a;
+    --panel-border: #4a4a51;
+    --topbar-bg: #8c1d18;
+    --topbar-text: #ffffff;
     --shadow: 0 2px 10px rgba(0,0,0,0.4);
   }
 }
@@ -44,8 +51,9 @@ body {
   justify-content: space-between;
   gap: 8px;
   padding: 14px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--topbar-bg);
+  color: var(--topbar-text);
+  border-bottom: 1px solid var(--topbar-bg);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -58,7 +66,8 @@ body {
 
 .date-label {
   font-size: 0.85rem;
-  color: var(--text-dim);
+  color: var(--topbar-text);
+  opacity: 0.85;
   text-transform: capitalize;
 }
 
@@ -77,7 +86,9 @@ body {
   cursor: pointer;
   color: var(--text);
 }
+.topbar .icon-btn { color: var(--topbar-text); }
 .icon-btn:hover, .icon-btn:focus-visible { background: var(--border); }
+.topbar .icon-btn:hover, .topbar .icon-btn:focus-visible { background: rgba(255,255,255,0.18); }
 .icon-btn.text-btn { font-size: 0.85rem; }
 
 .auth-bar {
@@ -109,15 +120,32 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 16px;
+  grid-template-columns: 1fr 10px var(--cal-width);
+  gap: 8px;
   padding: 16px;
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
+/* Maniglia fra le ore e il calendario: si trascina per allargare o
+   restringere il calendario, fino a farlo sparire del tutto. */
+.cal-resizer {
+  cursor: col-resize;
+  border-radius: 4px;
+  background: var(--border);
+  opacity: 0.6;
+  touch-action: none;
+}
+.cal-resizer:hover, .cal-resizer.dragging { opacity: 1; background: var(--panel-border); }
+
+.layout.cal-hidden { grid-template-columns: 1fr 10px 0px; }
+.layout.cal-hidden .calendar-panel { display: none; }
+
 @media (max-width: 720px) {
   .layout { grid-template-columns: 1fr; }
+  .layout.cal-hidden { grid-template-columns: 1fr; }
+  .layout.cal-hidden .calendar-panel { display: block; }
+  .cal-resizer { display: none; }
   .calendar-panel { order: -1; }
 }
 
@@ -213,7 +241,8 @@ body {
 
 .calendar-panel {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
   border-radius: var(--radius);
   padding: 12px;
   height: fit-content;

@@ -13,6 +13,7 @@ const App = {
     signedIn: false,
     selectedIds: new Set(), // ore selezionate con Ctrl/Cmd+clic, per la fusione
     pendingImages: [], // immagini scelte ma non ancora caricate su Drive
+    mergedGroups: {}, // idOra -> "id1+id2" del gruppo di ore fuse a cui appartiene
     planOriginal: "" // "cosa vuoi fare" come sta ora su Calendar
   },
 
@@ -20,6 +21,7 @@ const App = {
     UI.cacheEls();
     this.state.calMonth = { year: this.state.selectedDate.getFullYear(), month: this.state.selectedDate.getMonth() };
     this.bindStaticEvents();
+    this.initCalResizer();
     this.renderCalendar();
     this.updateDateLabel();
 
@@ -91,6 +93,12 @@ const App = {
     els.nextDayBtn.addEventListener("click", () => this.changeDay(1));
     els.todayBtn.addEventListener("click", () => this.goToToday());
     els.calToggleBtn.addEventListener("click", () => {
+      if (window.innerWidth > 720) {
+        // Su schermo largo il pulsante fa ricomparire il calendario se e'
+        // stato nascosto trascinando, o lo nasconde se e' visibile.
+        this.setCalWidth(this.calWidth < 40 ? 280 : 0);
+        return;
+      }
       els.calendarPanel.classList.toggle("is-open-mobile");
       els.calendarPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
@@ -150,6 +158,52 @@ const App = {
     // Modale saltata
     els.cancelCancelBtn.addEventListener("click", () => UI.hideModal(els.cancelModal));
     els.cancelSaveBtn.addEventListener("click", () => this.saveCancel());
+  },
+
+  // Larghezza del calendario regolabile trascinando la maniglia: sotto i 40px
+  // il pannello sparisce del tutto e resta solo la lista delle ore.
+  initCalResizer() {
+    const layout = document.querySelector(".layout");
+    const resizer = UI.els.calResizer;
+    this._layout = layout;
+    if (!layout || !resizer) return;
+
+    this.setCalWidth(parseInt(Store.getCalWidth() || "280", 10));
+
+    let trascino = false;
+    resizer.addEventListener("pointerdown", (e) => {
+      trascino = true;
+      resizer.classList.add("dragging");
+      try { resizer.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    resizer.addEventListener("pointermove", (e) => {
+      if (!trascino) return;
+      const rect = layout.getBoundingClientRect();
+      // 16 = padding destro del layout.
+      this.setCalWidth(rect.right - e.clientX - 16);
+    });
+    const fine = (e) => {
+      if (!trascino) return;
+      trascino = false;
+      resizer.classList.remove("dragging");
+      try { resizer.releasePointerCapture(e.pointerId); } catch (err) {}
+      Store.setCalWidth(String(this.calWidth));
+    };
+    resizer.addEventListener("pointerup", fine);
+    resizer.addEventListener("pointercancel", fine);
+  },
+
+  setCalWidth(w) {
+    if (isNaN(w)) w = 280;
+    w = Math.max(0, Math.min(560, Math.round(w)));
+    if (w > 0 && w < 40) w = 0;
+    this.calWidth = w;
+    if (this._layout) {
+      this._layout.style.setProperty("--cal-width", w + "px");
+      this._layout.classList.toggle("cal-hidden", w < 40);
+    }
+    Store.setCalWidth(String(w));
   },
 
   fillSettingsForm() {
@@ -256,6 +310,7 @@ const App = {
 
   buildDiarioMap(rows, dateISO) {
     const map = {};
+    const groups = {};
     rows.forEach(row => {
       const [, data, oraInizio, , idEvento, , stato, materiaNota, motivo, immagini] = row;
       if (data !== dateISO) return;
@@ -269,13 +324,53 @@ const App = {
       // Le ore fuse hanno un ID evento composto "id1+id2+...": la riga vale
       // per ciascuna delle ore originali, cosi ognuna mostra lo stesso stato.
       if (idEvento && idEvento.indexOf("+") !== -1) {
-        idEvento.split("+").forEach(id => { map[id] = entry; });
+        map[idEvento] = entry;
+        idEvento.split("+").forEach(id => {
+          map[id] = entry;
+          groups[id] = idEvento;
+        });
       } else {
         const key = idEvento || (data + "|" + oraInizio);
         map[key] = entry;
       }
     });
+    this.state.mergedGroups = groups;
     return map;
+  },
+
+  // Le ore registrate insieme diventano un unico blocco che copre tutto
+  // l'intervallo, invece di due rettangoli con lo stesso contenuto ripetuto.
+  displayEvents() {
+    const groups = this.state.mergedGroups || {};
+    const out = [];
+    const fatti = {};
+    this.state.events.forEach(ev => {
+      const gk = groups[ev.id];
+      if (!gk) { out.push(ev); return; }
+      if (fatti[gk]) return;
+      fatti[gk] = true;
+      const ids = gk.split("+");
+      const membri = this.state.events
+        .filter(e => ids.indexOf(e.id) !== -1)
+        .sort((a, b) => new Date(a.start.dateTime || a.start.date) - new Date(b.start.dateTime || b.start.date));
+      if (membri.length < 2) { out.push(ev); return; }
+      out.push(this.buildMergedEvent(membri, gk));
+    });
+    return out;
+  },
+
+  buildMergedEvent(membri, id) {
+    const first = membri[0], last = membri[membri.length - 1];
+    const uniq = (v, i, a) => a.indexOf(v) === i;
+    return {
+      id: id || membri.map(e => e.id).join("+"),
+      start: first.start,
+      end: last.end,
+      summary: membri.map(e => e.summary || "(senza titolo)").filter(uniq).join(" + "),
+      description: membri.map(e => e.description || "").filter(Boolean).filter(uniq).join("\n"),
+      colorId: first.colorId,
+      _mergedIds: membri.map(e => e.id)
+    };
   },
 
   keyFor(ev) {
@@ -283,7 +378,7 @@ const App = {
   },
 
   renderHours() {
-    UI.renderHoursList(this.state.events, this.state.diarioMap, {
+    UI.renderHoursList(this.displayEvents(), this.state.diarioMap, {
       keyFor: (ev) => this.keyFor(ev),
       onOpenNote: (ev) => this.openNoteModal(ev),
       onOpenQuickMenu: (ev, x, y) => this.openQuickMenu(ev, x, y),
@@ -317,6 +412,9 @@ const App = {
   // pagina o cambiando giorno.
   reorderEvents(fromId, toId) {
     if (!fromId || fromId === toId) return;
+    fromId = String(fromId).split("+")[0];
+    toId = String(toId).split("+")[0];
+    if (fromId === toId) return;
     const events = this.state.events;
     const fromIdx = events.findIndex(e => e.id === fromId);
     const toIdx = events.findIndex(e => e.id === toId);
@@ -327,28 +425,21 @@ const App = {
   },
 
   openMergeNoteModal() {
-    const ids = Array.from(this.state.selectedIds);
+    // Un blocco gia fuso ha un id composto: lo riespandiamo nelle ore singole.
+    const ids = [];
+    Array.from(this.state.selectedIds).forEach(id => {
+      String(id).split("+").forEach(x => { if (ids.indexOf(x) === -1) ids.push(x); });
+    });
     if (ids.length < 2) return;
     const evs = this.state.events
-      .filter(e => ids.includes(e.id))
+      .filter(e => ids.indexOf(e.id) !== -1)
       .sort((a, b) => new Date(a.start.dateTime || a.start.date) - new Date(b.start.dateTime || b.start.date));
     if (evs.length < 2) return;
-    const first = evs[0], last = evs[evs.length - 1];
-    const subjects = evs.map(e => e.summary || "(senza titolo)").filter((v, i, a) => a.indexOf(v) === i);
-    const descriptions = evs.map(e => e.description || "").filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-    const merged = {
-      id: evs.map(e => e.id).join("+"),
-      start: first.start,
-      end: last.end,
-      summary: subjects.join(" + "),
-      description: descriptions.join("\n"),
-      colorId: first.colorId,
-      _mergedIds: evs.map(e => e.id)
-    };
+    const merged = this.buildMergedEvent(evs);
     this.state.currentEvent = merged;
     UI.els.noteModalSubtitle.textContent = "Ore fuse: " + this.subtitleFor(merged);
-    this.state.planOriginal = merged.description;
-    UI.els.planText.value = merged.description;
+    this.state.planOriginal = htmlToText(merged.description);
+    UI.els.planText.value = this.state.planOriginal;
     UI.els.noteText.value = "";
     this.state.pendingImages = [];
     UI.renderPendingImages([], () => {});
@@ -372,7 +463,7 @@ const App = {
     this.state.currentEvent = ev;
     const existing = this.state.diarioMap[this.keyFor(ev)];
     UI.els.noteModalSubtitle.textContent = this.subtitleFor(ev);
-    this.state.planOriginal = ev.description || "";
+    this.state.planOriginal = htmlToText(ev.description || "");
     UI.els.planText.value = this.state.planOriginal;
     UI.els.noteText.value = existing && existing.stato === "svolta" ? existing.nota : "";
     this.state.pendingImages = [];
@@ -423,10 +514,11 @@ const App = {
     const ids = ev._mergedIds || [ev.id];
     for (const id of ids) {
       if (!id) continue;
-      await GoogleApi.updateEventDescription(calendarId, id, plan);
+      await GoogleApi.updateEventDescription(calendarId, id, textToHtml(plan));
     }
-    this.state.events.forEach(e => { if (ids.indexOf(e.id) !== -1) e.description = plan; });
-    if (!ev._mergedIds) ev.description = plan;
+    const html = textToHtml(plan);
+    this.state.events.forEach(e => { if (ids.indexOf(e.id) !== -1) e.description = html; });
+    if (!ev._mergedIds) ev.description = html;
   },
 
   openModifyModal(ev) {
@@ -510,7 +602,11 @@ const App = {
 
     const entry = { stato: "svolta", nota, materiaEffettiva: "", motivo: "", immagini };
     if (ev._mergedIds) {
-      ev._mergedIds.forEach(id => { this.state.diarioMap[id] = entry; });
+      this.state.diarioMap[ev.id] = entry;
+      ev._mergedIds.forEach(id => {
+        this.state.diarioMap[id] = entry;
+        this.state.mergedGroups[id] = ev.id;
+      });
       this.clearSelection();
     } else {
       this.state.diarioMap[this.keyFor(ev)] = entry;
@@ -562,6 +658,31 @@ function waitForGoogleIdentity(onReady, onTimeout, attemptsLeft) {
     return;
   }
   setTimeout(() => waitForGoogleIdentity(onReady, onTimeout, attemptsLeft - 1), 200);
+}
+
+// Le descrizioni degli eventi Calendar sono in HTML (<br>, <b>...): nel
+// riquadro le mostriamo come testo semplice, e le riconvertiamo al salvataggio.
+function htmlToText(html) {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function textToHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
 }
 
 function startOfDay(d) {
