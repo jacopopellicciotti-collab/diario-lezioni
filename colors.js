@@ -17,4 +17,13 @@ const GOOGLE_EVENT_COLORS = {
 
 function colorForEvent(colorId) {
   return GOOGLE_EVENT_COLORS[colorId] || "#3f51b5";
+
+// Solo gli eventi scolastici: giallo (Banana, medie) e verde (Salvia o
+// Basilico, liceo). Gli eventi personali (impegni, appuntamenti) di solito
+// non hanno nessuno di questi colori assegnato e vengono quindi esclusi
+// dalla dashboard.
+const SCHOOL_COLOR_IDS = ["2", "5", "10"];
+
+function isSchoolEvent(colorId) {
+  return SCHOOL_COLOR_IDS.includes(colorId);
 }
