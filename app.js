@@ -10,7 +10,10 @@ const App = {
     events: [],
     diarioMap: {}, // eventId -> {stato, materiaEffettiva, nota, motivo}
     currentEvent: null,
-    signedIn: false
+    signedIn: false,
+    selectedIds: new Set(), // ore selezionate con Ctrl/Cmd+clic, per la fusione
+    pendingImages: [], // immagini scelte ma non ancora caricate su Drive
+    planOriginal: "" // "cosa vuoi fare" come sta ora su Calendar
   },
 
   async init() {
@@ -31,17 +34,24 @@ const App = {
   },
 
   setupGoogleAuth(clientId) {
-    UI.els.authBar.hidden = false;
     waitForGoogleIdentity(() => {
       GoogleApi.init(
         clientId,
         () => this.onSignedIn(),
-        (msg) => { UI.toast(msg); }
+        (msg) => {
+          // Se il tentativo era silenzioso (nessun click dell'utente) non
+          // mostriamo l'errore: e' normale la prima volta o se il consenso
+          // e' scaduto. Mostriamo solo il pulsante di accesso manuale.
+          UI.els.authBar.hidden = false;
+          if (GoogleApi._lastInteractive) UI.toast(msg);
+        }
       );
-      // Nota: niente tentativo di accesso automatico senza interazione.
-      // L'accesso "silenzioso" di Google puo aprire un popup, che i browser
-      // bloccano se non parte da un click diretto dell'utente: e' piu
-      // affidabile chiedere sempre un click su "Accedi con Google".
+      // Primo tentativo: accesso "silenzioso", senza popup e senza schermate.
+      // Funziona senza che l'utente veda nulla se e' gia' loggato con Google
+      // su questo dispositivo/browser e ha gia' dato il consenso in passato.
+      // Se fallisce (mai acceduto prima, consenso revocato, ecc.) compare
+      // semplicemente il pulsante "Accedi con Google".
+      GoogleApi.requestToken(false);
     }, () => {
       UI.toast("La libreria di accesso Google non si e caricata. Controlla la connessione e ricarica la pagina.");
     });
@@ -95,6 +105,10 @@ const App = {
     els.settingsCancelBtn.addEventListener("click", () => UI.hideModal(els.settingsModal));
     els.settingsSaveBtn.addEventListener("click", () => this.saveSettings());
 
+    // Fusione ore (Ctrl/Cmd+clic per selezionare, poi "Fondi")
+    els.mergeBtn.addEventListener("click", () => this.openMergeNoteModal());
+    els.mergeCancelBtn.addEventListener("click", () => this.clearSelection());
+
     // Menu rapido
     document.addEventListener("click", (e) => {
       if (!els.quickMenu.hidden && !els.quickMenu.contains(e.target)) UI.hideQuickMenu();
@@ -111,6 +125,23 @@ const App = {
     // Modale nota
     els.noteCancelBtn.addEventListener("click", () => UI.hideModal(els.noteModal));
     els.noteSaveBtn.addEventListener("click", () => this.saveNote());
+
+    // Immagini: scelta da file oppure incollate (screenshot con Ctrl+V).
+    els.imageInput.addEventListener("change", (e) => {
+      Array.from(e.target.files || []).forEach(f => this.addPendingImage(f));
+      e.target.value = "";
+    });
+    els.noteModal.addEventListener("paste", (e) => {
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      let taken = false;
+      Array.from(items).forEach(it => {
+        if (it.type && it.type.indexOf("image/") === 0) {
+          const f = it.getAsFile();
+          if (f) { this.addPendingImage(f); taken = true; }
+        }
+      });
+      if (taken) e.preventDefault();
+    });
 
     // Modale modifica
     els.modifyCancelBtn.addEventListener("click", () => UI.hideModal(els.modifyModal));
@@ -193,6 +224,7 @@ const App = {
   async loadDay() {
     if (!GoogleApi.isSignedIn()) return;
     UI.setLoading(true);
+    this.clearSelection();
     const dateISO = isoDate(this.state.selectedDate);
     const calendarId = Store.getCalendarId();
     const spreadsheetId = Store.getSpreadsheetId();
@@ -225,15 +257,23 @@ const App = {
   buildDiarioMap(rows, dateISO) {
     const map = {};
     rows.forEach(row => {
-      const [, data, oraInizio, , idEvento, , stato, materiaNota, motivo] = row;
+      const [, data, oraInizio, , idEvento, , stato, materiaNota, motivo, immagini] = row;
       if (data !== dateISO) return;
-      const key = idEvento || (data + "|" + oraInizio);
-      map[key] = {
+      const entry = {
         stato: stato || "",
         materiaEffettiva: stato === "modificata" ? (materiaNota || "") : "",
         nota: stato === "svolta" ? (materiaNota || "") : (stato === "modificata" ? (motivo || "") : ""),
-        motivo: stato === "caduta" ? (materiaNota || "") : ""
+        motivo: stato === "caduta" ? (materiaNota || "") : "",
+        immagini: immagini ? immagini.split(/\s+/).filter(Boolean) : []
       };
+      // Le ore fuse hanno un ID evento composto "id1+id2+...": la riga vale
+      // per ciascuna delle ore originali, cosi ognuna mostra lo stesso stato.
+      if (idEvento && idEvento.indexOf("+") !== -1) {
+        idEvento.split("+").forEach(id => { map[id] = entry; });
+      } else {
+        const key = idEvento || (data + "|" + oraInizio);
+        map[key] = entry;
+      }
     });
     return map;
   },
@@ -246,8 +286,75 @@ const App = {
     UI.renderHoursList(this.state.events, this.state.diarioMap, {
       keyFor: (ev) => this.keyFor(ev),
       onOpenNote: (ev) => this.openNoteModal(ev),
-      onOpenQuickMenu: (ev, x, y) => this.openQuickMenu(ev, x, y)
-    });
+      onOpenQuickMenu: (ev, x, y) => this.openQuickMenu(ev, x, y),
+      onToggleSelect: (ev) => this.toggleSelect(ev),
+      onReorder: (fromId, toId) => this.reorderEvents(fromId, toId)
+    }, this.state.selectedIds);
+  },
+
+  toggleSelect(ev) {
+    const id = ev.id;
+    if (!id) return;
+    if (this.state.selectedIds.has(id)) this.state.selectedIds.delete(id);
+    else this.state.selectedIds.add(id);
+    this.updateMergeBar();
+    this.renderHours();
+  },
+
+  clearSelection() {
+    this.state.selectedIds.clear();
+    this.updateMergeBar();
+  },
+
+  updateMergeBar() {
+    const n = this.state.selectedIds.size;
+    UI.els.mergeBar.hidden = n < 2;
+    if (n >= 2) UI.els.mergeBarLabel.textContent = n + " ore selezionate";
+  },
+
+  // Riordina solo visivamente le ore del giorno corrente (es. scambio con un
+  // collega): non tocca il Calendar ne' il foglio, si perde ricaricando la
+  // pagina o cambiando giorno.
+  reorderEvents(fromId, toId) {
+    if (!fromId || fromId === toId) return;
+    const events = this.state.events;
+    const fromIdx = events.findIndex(e => e.id === fromId);
+    const toIdx = events.findIndex(e => e.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = events.splice(fromIdx, 1);
+    events.splice(toIdx, 0, moved);
+    this.renderHours();
+  },
+
+  openMergeNoteModal() {
+    const ids = Array.from(this.state.selectedIds);
+    if (ids.length < 2) return;
+    const evs = this.state.events
+      .filter(e => ids.includes(e.id))
+      .sort((a, b) => new Date(a.start.dateTime || a.start.date) - new Date(b.start.dateTime || b.start.date));
+    if (evs.length < 2) return;
+    const first = evs[0], last = evs[evs.length - 1];
+    const subjects = evs.map(e => e.summary || "(senza titolo)").filter((v, i, a) => a.indexOf(v) === i);
+    const descriptions = evs.map(e => e.description || "").filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+    const merged = {
+      id: evs.map(e => e.id).join("+"),
+      start: first.start,
+      end: last.end,
+      summary: subjects.join(" + "),
+      description: descriptions.join("\n"),
+      colorId: first.colorId,
+      _mergedIds: evs.map(e => e.id)
+    };
+    this.state.currentEvent = merged;
+    UI.els.noteModalSubtitle.textContent = "Ore fuse: " + this.subtitleFor(merged);
+    this.state.planOriginal = merged.description;
+    UI.els.planText.value = merged.description;
+    UI.els.noteText.value = "";
+    this.state.pendingImages = [];
+    UI.renderPendingImages([], () => {});
+    UI.renderExistingImages([]);
+    UI.showModal(UI.els.noteModal);
+    UI.els.noteText.focus();
   },
 
   openQuickMenu(ev, x, y) {
@@ -265,9 +372,61 @@ const App = {
     this.state.currentEvent = ev;
     const existing = this.state.diarioMap[this.keyFor(ev)];
     UI.els.noteModalSubtitle.textContent = this.subtitleFor(ev);
+    this.state.planOriginal = ev.description || "";
+    UI.els.planText.value = this.state.planOriginal;
     UI.els.noteText.value = existing && existing.stato === "svolta" ? existing.nota : "";
+    this.state.pendingImages = [];
+    UI.renderPendingImages([], () => {});
+    UI.renderExistingImages(existing ? existing.immagini : []);
     UI.showModal(UI.els.noteModal);
     UI.els.noteText.focus();
+  },
+
+  addPendingImage(file) {
+    if (!file) return;
+    const ext = (file.type && file.type.split("/")[1]) || "png";
+    const name = "diario-" + isoDate(this.state.selectedDate) + "-" + Date.now() + "-" +
+      (this.state.pendingImages.length + 1) + "." + ext;
+    this.state.pendingImages.push({ file: file, name: name });
+    this.renderPendingImages();
+  },
+
+  removePendingImage(i) {
+    this.state.pendingImages.splice(i, 1);
+    this.renderPendingImages();
+  },
+
+  renderPendingImages() {
+    UI.renderPendingImages(this.state.pendingImages, (i) => this.removePendingImage(i));
+  },
+
+  async uploadPendingImages() {
+    if (!this.state.pendingImages.length) return [];
+    let folderId = Store.getImagesFolderId();
+    if (!folderId) {
+      folderId = await GoogleApi.createImagesFolder();
+      Store.setImagesFolderId(folderId);
+    }
+    const links = [];
+    for (const img of this.state.pendingImages) {
+      const res = await GoogleApi.uploadImage(img.file, folderId, img.name);
+      links.push(res.webViewLink || ("https://drive.google.com/file/d/" + res.id + "/view"));
+    }
+    this.state.pendingImages = [];
+    this.renderPendingImages();
+    return links;
+  },
+
+  // Riporta su Google Calendar il "cosa vuoi fare" modificato a mano.
+  async savePlanToCalendar(ev, plan) {
+    const calendarId = Store.getCalendarId();
+    const ids = ev._mergedIds || [ev.id];
+    for (const id of ids) {
+      if (!id) continue;
+      await GoogleApi.updateEventDescription(calendarId, id, plan);
+    }
+    this.state.events.forEach(e => { if (ids.indexOf(e.id) !== -1) e.description = plan; });
+    if (!ev._mergedIds) ev.description = plan;
   },
 
   openModifyModal(ev) {
@@ -320,13 +479,44 @@ const App = {
     const ev = this.state.currentEvent;
     if (!ev) return;
     const nota = UI.els.noteText.value.trim();
-    const row = this.baseRow(ev, "svolta").concat([nota, ""]);
-    const ok = await this.saveRow(row, "Salvato.");
-    if (ok) {
-      this.state.diarioMap[this.keyFor(ev)] = { stato: "svolta", nota, materiaEffettiva: "", motivo: "" };
-      UI.hideModal(UI.els.noteModal);
-      this.renderHours();
+    const plan = UI.els.planText.value;
+    const existing = this.state.diarioMap[this.keyFor(ev)];
+    const vecchieImmagini = (existing && existing.immagini) ? existing.immagini : [];
+
+    let nuoveImmagini = [];
+    if (this.state.pendingImages.length) {
+      UI.toast("Carico le immagini su Drive...");
+      try {
+        nuoveImmagini = await this.uploadPendingImages();
+      } catch (e) {
+        this.handleApiError(e, "Non sono riuscito a caricare le immagini: " + e.message);
+        return;
+      }
     }
+    const immagini = vecchieImmagini.concat(nuoveImmagini);
+
+    const row = this.baseRow(ev, "svolta").concat([nota, "", immagini.join(" ")]);
+    const ok = await this.saveRow(row, "Salvato.");
+    if (!ok) return;
+
+    if (plan !== this.state.planOriginal) {
+      try {
+        await this.savePlanToCalendar(ev, plan);
+        this.state.planOriginal = plan;
+      } catch (e) {
+        this.handleApiError(e, "Nota salvata, ma non ho potuto aggiornare il Calendar: " + e.message);
+      }
+    }
+
+    const entry = { stato: "svolta", nota, materiaEffettiva: "", motivo: "", immagini };
+    if (ev._mergedIds) {
+      ev._mergedIds.forEach(id => { this.state.diarioMap[id] = entry; });
+      this.clearSelection();
+    } else {
+      this.state.diarioMap[this.keyFor(ev)] = entry;
+    }
+    UI.hideModal(UI.els.noteModal);
+    this.renderHours();
   },
 
   async saveModify() {
@@ -338,7 +528,7 @@ const App = {
     const row = this.baseRow(ev, "modificata").concat([materia, nota]);
     const ok = await this.saveRow(row, "Salvato.");
     if (ok) {
-      this.state.diarioMap[this.keyFor(ev)] = { stato: "modificata", materiaEffettiva: materia, nota, motivo: "" };
+      this.state.diarioMap[this.keyFor(ev)] = { stato: "modificata", materiaEffettiva: materia, nota, motivo: "", immagini: [] };
       UI.hideModal(UI.els.modifyModal);
       this.renderHours();
     }
@@ -354,7 +544,7 @@ const App = {
     const row = this.baseRow(ev, "caduta").concat(["", motivoCompleto]);
     const ok = await this.saveRow(row, "Segnata come saltata.");
     if (ok) {
-      this.state.diarioMap[this.keyFor(ev)] = { stato: "caduta", materiaEffettiva: "", nota: "", motivo: motivoCompleto };
+      this.state.diarioMap[this.keyFor(ev)] = { stato: "caduta", materiaEffettiva: "", nota: "", motivo: motivoCompleto, immagini: [] };
       UI.hideModal(UI.els.cancelModal);
       this.renderHours();
     }

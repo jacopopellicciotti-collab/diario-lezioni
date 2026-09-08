@@ -6,7 +6,8 @@ const Store = {
   KEYS: {
     clientId: "diario_client_id",
     calendarId: "diario_calendar_id",
-    spreadsheetId: "diario_spreadsheet_id"
+    spreadsheetId: "diario_spreadsheet_id",
+    imagesFolderId: "diario_images_folder_id"
   },
 
   get(key) {
@@ -35,5 +36,8 @@ const Store = {
   setCalendarId(v) { this.set(this.KEYS.calendarId, v || "primary"); },
 
   getSpreadsheetId() { return this.get(this.KEYS.spreadsheetId); },
-  setSpreadsheetId(v) { this.set(this.KEYS.spreadsheetId, v); }
+  setSpreadsheetId(v) { this.set(this.KEYS.spreadsheetId, v); },
+
+  getImagesFolderId() { return this.get(this.KEYS.imagesFolderId); },
+  setImagesFolderId(v) { this.set(this.KEYS.imagesFolderId, v); }
 };

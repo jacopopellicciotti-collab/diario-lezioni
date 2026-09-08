@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Diario di bordo</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -30,6 +30,11 @@
 
 <main class="layout">
   <section class="hours-panel">
+    <div id="mergeBar" class="merge-bar" hidden>
+      <span id="mergeBarLabel"></span>
+      <button id="mergeBtn" class="primary-btn">Fondi e scrivi nota</button>
+      <button id="mergeCancelBtn" class="secondary-btn">Annulla selezione</button>
+    </div>
     <div id="loadingMsg" class="hint" hidden>Carico le ore di lezione...</div>
     <div id="emptyMsg" class="hint" hidden>Nessuna ora di lezione trovata per questo giorno.</div>
     <ul id="hoursList" class="hours-list"></ul>
@@ -59,9 +64,22 @@
 <!-- Pannello nota -->
 <div id="noteModal" class="modal-overlay" hidden>
   <div class="modal">
-    <h2 id="noteModalTitle">Cosa hai fatto?</h2>
+    <h2 id="noteModalTitle">Ora di lezione</h2>
     <p id="noteModalSubtitle" class="modal-subtitle"></p>
+
+    <label for="planText">Cosa vuoi fare</label>
+    <textarea id="planText" rows="4" placeholder="Programma previsto per questa ora (dal Calendar)"></textarea>
+    <div class="field-hint">Se lo modifichi, viene aggiornato anche sul tuo Google Calendar.</div>
+
+    <label for="noteText">Cosa hai fatto</label>
     <textarea id="noteText" rows="5" placeholder="Es. Abbiamo finito la scheda 4, ripasso participio..."></textarea>
+
+    <label for="imageInput">Immagini e screenshot</label>
+    <input type="file" id="imageInput" accept="image/*" multiple>
+    <div class="field-hint">Puoi anche incollare uno screenshot con Ctrl+V mentre questo riquadro e aperto.</div>
+    <div id="imageList" class="image-list"></div>
+    <div id="existingImages" class="image-list existing"></div>
+
     <div class="modal-actions">
       <button id="noteCancelBtn" class="secondary-btn">Annulla</button>
       <button id="noteSaveBtn" class="primary-btn">Salva</button>
@@ -129,10 +147,10 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="colors.js?v=2"></script>
-<script src="store.js"></script>
-<script src="googleApi.js"></script>
-<script src="ui.js"></script>
-<script src="app.js"></script>
+<script src="colors.js?v=3"></script>
+<script src="store.js?v=3"></script>
+<script src="googleApi.js?v=3"></script>
+<script src="ui.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

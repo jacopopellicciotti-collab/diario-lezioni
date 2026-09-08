@@ -189,6 +189,28 @@ body {
 }
 .hour-menu-btn:hover { background: var(--border); }
 
+.hour-block.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.hour-block.dragging { opacity: 0.5; }
+
+.merge-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+.merge-bar span { flex: 1; color: var(--text); }
+.merge-bar .primary-btn, .merge-bar .secondary-btn { padding: 8px 14px; font-size: 0.85rem; }
+
 .calendar-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -311,6 +333,58 @@ body {
   color: var(--text);
   font-size: 0.95rem;
   font-family: inherit;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.image-chip {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.image-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.image-chip-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.image-link {
+  font-size: 0.8rem;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  text-decoration: none;
 }
 
 .modal-actions {

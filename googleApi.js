@@ -4,8 +4,13 @@
 // per un client-side puro senza backend.
 
 const SCOPES = [
-  "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/spreadsheets"
+  // calendar.events permette anche di scrivere: serve per aggiornare su
+  // Calendar il "cosa vuoi fare" modificato a mano nell'app.
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/spreadsheets",
+  // drive.file da accesso solo ai file creati da questa app (le immagini
+  // caricate e il foglio Diario di bordo): non vede il resto del Drive.
+  "https://www.googleapis.com/auth/drive.file"
 ].join(" ");
 
 const GoogleApi = {
@@ -47,6 +52,10 @@ const GoogleApi = {
 
   requestToken(interactive) {
     if (!this._tokenClient) return;
+    // Ricordiamo se questa richiesta e' partita da un click dell'utente
+    // (interactive) o e' un tentativo silenzioso automatico, cosi chi
+    // riceve l'errore sa se mostrare o no un messaggio.
+    this._lastInteractive = interactive;
     this._tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "" });
   },
 
@@ -97,6 +106,45 @@ const GoogleApi = {
     return (data.items || []).filter(ev => ev.start && (ev.start.dateTime || ev.start.date) && ev.status !== "cancelled");
   },
 
+  // Aggiorna la descrizione di un evento (il "cosa vuoi fare"): modifica solo
+  // quel campo, lascia intatti titolo, orario e colore.
+  async updateEventDescription(calendarId, eventId, description) {
+    const url = "https://www.googleapis.com/calendar/v3/calendars/" +
+      encodeURIComponent(calendarId || "primary") + "/events/" + encodeURIComponent(eventId);
+    return this._fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: description })
+    });
+  },
+
+  // --- Drive (immagini e screenshot) ---
+
+  async createImagesFolder() {
+    const data = await this._fetch("https://www.googleapis.com/drive/v3/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Diario di bordo - immagini",
+        mimeType: "application/vnd.google-apps.folder"
+      })
+    });
+    return data.id;
+  },
+
+  async uploadImage(file, folderId, name) {
+    const metadata = { name: name || file.name || "immagine.png" };
+    if (folderId) metadata.parents = [folderId];
+    const form = new FormData();
+    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+    form.append("file", file);
+    // Nessun Content-Type esplicito: lo imposta il browser con il boundary.
+    return this._fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
+      { method: "POST", body: form }
+    );
+  },
+
   // --- Sheets ---
 
   async createDiarioSpreadsheet() {
@@ -110,7 +158,8 @@ const GoogleApi = {
           rowData: [{
             values: [
               "Timestamp", "Data", "Ora inizio", "Ora fine", "ID evento",
-              "Materia pianificata", "Stato", "Materia/nota effettiva", "Motivo"
+              "Materia pianificata", "Stato", "Materia/nota effettiva", "Motivo",
+              "Immagini"
             ].map(v => ({ userEnteredValue: { stringValue: v } }))
           }]
         }]
@@ -126,7 +175,7 @@ const GoogleApi = {
 
   async appendDiarioRow(spreadsheetId, row) {
     const url = "https://sheets.googleapis.com/v4/spreadsheets/" + spreadsheetId +
-      "/values/Diario!A:I:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS";
+      "/values/Diario!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS";
     return this._fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -135,7 +184,7 @@ const GoogleApi = {
   },
 
   async readDiarioRows(spreadsheetId) {
-    const url = "https://sheets.googleapis.com/v4/spreadsheets/" + spreadsheetId + "/values/Diario!A2:I10000";
+    const url = "https://sheets.googleapis.com/v4/spreadsheets/" + spreadsheetId + "/values/Diario!A2:J10000";
     const data = await this._fetch(url);
     return data.values || [];
   }

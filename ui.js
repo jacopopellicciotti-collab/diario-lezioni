@@ -10,7 +10,9 @@ const UI = {
       "selectedDateLabel", "prevDayBtn", "todayBtn", "nextDayBtn",
       "calToggleBtn", "settingsBtn", "calendarPanel",
       "calPrevMonth", "calNextMonth", "calMonthLabel", "miniCalGrid",
+      "mergeBar", "mergeBarLabel", "mergeBtn", "mergeCancelBtn",
       "quickMenu", "noteModal", "noteModalTitle", "noteModalSubtitle", "noteText",
+      "planText", "imageInput", "imageList", "existingImages",
       "noteCancelBtn", "noteSaveBtn",
       "modifyModal", "modifyModalSubtitle", "modifySubject", "modifyNote",
       "modifyCancelBtn", "modifySaveBtn",
@@ -57,10 +59,11 @@ const UI = {
     return "";
   },
 
-  renderHoursList(events, diarioMap, handlers) {
+  renderHoursList(events, diarioMap, handlers, selectedIds) {
     const list = this.els.hoursList;
     list.innerHTML = "";
     this.els.emptyMsg.hidden = events.length > 0;
+    selectedIds = selectedIds || new Set();
 
     events.forEach(ev => {
       const key = handlers.keyFor(ev);
@@ -68,9 +71,10 @@ const UI = {
       const color = colorForEvent(ev.colorId);
 
       const li = document.createElement("li");
-      li.className = "hour-block";
+      li.className = "hour-block" + (selectedIds.has(ev.id) ? " selected" : "");
       li.style.borderLeftColor = color;
       li.dataset.eventId = ev.id;
+      li.draggable = true;
 
       const main = document.createElement("div");
       main.className = "hour-block-main";
@@ -108,13 +112,77 @@ const UI = {
       li.appendChild(main);
       li.appendChild(menuBtn);
 
-      li.addEventListener("click", () => handlers.onOpenNote(ev));
+      li.addEventListener("click", (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          handlers.onToggleSelect(ev);
+        } else {
+          handlers.onOpenNote(ev);
+        }
+      });
       li.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         handlers.onOpenQuickMenu(ev, e.clientX, e.clientY);
       });
 
+      // Trascinamento per riordinare visivamente le ore (es. scambio con un
+      // collega): funziona col mouse su computer; su telefono/tablet usa
+      // invece "Ho fatto altro" su ciascuna ora per registrare lo scambio.
+      li.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", ev.id || "");
+        e.dataTransfer.effectAllowed = "move";
+        li.classList.add("dragging");
+      });
+      li.addEventListener("dragend", () => li.classList.remove("dragging"));
+      li.addEventListener("dragover", (e) => { e.preventDefault(); });
+      li.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const fromId = e.dataTransfer.getData("text/plain");
+        handlers.onReorder(fromId, ev.id);
+      });
+
       list.appendChild(li);
+    });
+  },
+
+  // Anteprime delle immagini scelte ma non ancora caricate su Drive.
+  renderPendingImages(images, onRemove) {
+    const box = this.els.imageList;
+    box.innerHTML = "";
+    images.forEach((img, i) => {
+      const chip = document.createElement("div");
+      chip.className = "image-chip";
+
+      const thumb = document.createElement("img");
+      thumb.alt = "";
+      thumb.src = URL.createObjectURL(img.file);
+      thumb.addEventListener("load", () => URL.revokeObjectURL(thumb.src));
+
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "image-chip-remove";
+      rm.textContent = "×";
+      rm.setAttribute("aria-label", "Togli questa immagine");
+      rm.addEventListener("click", () => onRemove(i));
+
+      chip.appendChild(thumb);
+      chip.appendChild(rm);
+      box.appendChild(chip);
+    });
+  },
+
+  // Link alle immagini gia caricate in precedenza per questa ora.
+  renderExistingImages(links) {
+    const box = this.els.existingImages;
+    box.innerHTML = "";
+    (links || []).filter(Boolean).forEach((link, i) => {
+      const a = document.createElement("a");
+      a.className = "image-link";
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = "Immagine " + (i + 1);
+      box.appendChild(a);
     });
   },
 
