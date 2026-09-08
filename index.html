@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Diario di bordo</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <h1>Diario di bordo</h1>
+    <span id="selectedDateLabel" class="date-label"></span>
+  </div>
+  <div class="topbar-actions">
+    <button id="prevDayBtn" class="icon-btn" title="Giorno precedente" aria-label="Giorno precedente">&#8249;</button>
+    <button id="todayBtn" class="icon-btn text-btn" title="Vai a oggi">Oggi</button>
+    <button id="nextDayBtn" class="icon-btn" title="Giorno successivo" aria-label="Giorno successivo">&#8250;</button>
+    <button id="calToggleBtn" class="icon-btn" title="Apri calendario" aria-label="Apri calendario">&#128197;</button>
+    <button id="settingsBtn" class="icon-btn" title="Impostazioni" aria-label="Impostazioni">&#9881;</button>
+  </div>
+</header>
+
+<div id="authBar" class="auth-bar" hidden>
+  <p>Accedi con il tuo account Google per vedere le ore di lezione e scrivere il diario.</p>
+  <button id="loginBtn" class="primary-btn">Accedi con Google</button>
+</div>
+
+<main class="layout">
+  <section class="hours-panel">
+    <div id="loadingMsg" class="hint" hidden>Carico le ore di lezione...</div>
+    <div id="emptyMsg" class="hint" hidden>Nessuna ora di lezione trovata per questo giorno.</div>
+    <ul id="hoursList" class="hours-list"></ul>
+  </section>
+
+  <aside id="calendarPanel" class="calendar-panel">
+    <div class="mini-cal-header">
+      <button id="calPrevMonth" class="icon-btn" aria-label="Mese precedente">&#8249;</button>
+      <span id="calMonthLabel"></span>
+      <button id="calNextMonth" class="icon-btn" aria-label="Mese successivo">&#8250;</button>
+    </div>
+    <div class="mini-cal-weekdays">
+      <span>L</span><span>M</span><span>M</span><span>G</span><span>V</span><span>S</span><span>D</span>
+    </div>
+    <div id="miniCalGrid" class="mini-cal-grid"></div>
+  </aside>
+</main>
+
+<!-- Menu rapido (click destro su desktop, pulsante "..." su mobile) -->
+<div id="quickMenu" class="quick-menu" hidden>
+  <button data-action="note">Scrivi cosa hai fatto</button>
+  <button data-action="modify">Ho fatto altro (cambia materia)</button>
+  <button data-action="cancel">Segna come saltata</button>
+  <button data-action="close" class="quick-menu-close">Annulla</button>
+</div>
+
+<!-- Pannello nota -->
+<div id="noteModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2 id="noteModalTitle">Cosa hai fatto?</h2>
+    <p id="noteModalSubtitle" class="modal-subtitle"></p>
+    <textarea id="noteText" rows="5" placeholder="Es. Abbiamo finito la scheda 4, ripasso participio..."></textarea>
+    <div class="modal-actions">
+      <button id="noteCancelBtn" class="secondary-btn">Annulla</button>
+      <button id="noteSaveBtn" class="primary-btn">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pannello modifica materia -->
+<div id="modifyModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>Ho fatto altro</h2>
+    <p id="modifyModalSubtitle" class="modal-subtitle"></p>
+    <label for="modifySubject">Materia / attivita effettiva</label>
+    <input type="text" id="modifySubject" placeholder="Es. Grammatica invece di epica">
+    <label for="modifyNote">Note (facoltativo)</label>
+    <textarea id="modifyNote" rows="3"></textarea>
+    <div class="modal-actions">
+      <button id="modifyCancelBtn" class="secondary-btn">Annulla</button>
+      <button id="modifySaveBtn" class="primary-btn">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pannello lezione saltata -->
+<div id="cancelModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>Segna come saltata</h2>
+    <p id="cancelModalSubtitle" class="modal-subtitle"></p>
+    <label for="cancelReason">Motivo</label>
+    <select id="cancelReason">
+      <option value="">Seleziona...</option>
+      <option value="Assemblea/attivita scolastica">Assemblea/attivita scolastica</option>
+      <option value="Sciopero">Sciopero</option>
+      <option value="Gita">Gita</option>
+      <option value="Malattia docente">Malattia docente</option>
+      <option value="Consiglio di classe">Consiglio di classe</option>
+      <option value="Altro">Altro</option>
+    </select>
+    <label for="cancelNote">Dettagli (facoltativo)</label>
+    <textarea id="cancelNote" rows="3"></textarea>
+    <div class="modal-actions">
+      <button id="cancelCancelBtn" class="secondary-btn">Annulla</button>
+      <button id="cancelSaveBtn" class="primary-btn">Segna saltata</button>
+    </div>
+  </div>
+</div>
+
+<!-- Impostazioni -->
+<div id="settingsModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2>Impostazioni</h2>
+    <label for="clientIdInput">Client ID Google (OAuth)</label>
+    <input type="text" id="clientIdInput" placeholder="xxxxxxxx.apps.googleusercontent.com">
+    <label for="calendarIdInput">ID Calendario</label>
+    <input type="text" id="calendarIdInput" placeholder="primary" value="primary">
+    <label for="spreadsheetIdInput">ID foglio "Diario di bordo"</label>
+    <input type="text" id="spreadsheetIdInput" placeholder="Lasciare vuoto per crearne uno nuovo al primo accesso">
+    <div id="settingsHint" class="hint"></div>
+    <div class="modal-actions">
+      <button id="settingsCancelBtn" class="secondary-btn">Annulla</button>
+      <button id="settingsSaveBtn" class="primary-btn">Salva</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/colors.js"></script>
+<script src="js/store.js"></script>
+<script src="js/googleApi.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
