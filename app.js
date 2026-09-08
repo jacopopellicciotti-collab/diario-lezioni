@@ -202,7 +202,7 @@ const App = {
         GoogleApi.listEventsForDay(calendarId, dateISO),
         spreadsheetId ? GoogleApi.readDiarioRows(spreadsheetId) : Promise.resolve([])
       ]);
-      this.state.events = events;
+      this.state.events = events.filter(ev => isSchoolEvent(ev.colorId));
       this.state.diarioMap = this.buildDiarioMap(rows, dateISO);
       UI.setLoading(false);
       this.renderHours();
