@@ -8,7 +8,8 @@ const Store = {
     calendarId: "diario_calendar_id",
     spreadsheetId: "diario_spreadsheet_id",
     imagesFolderId: "diario_images_folder_id",
-    calWidth: "diario_cal_width"
+    calWidth: "diario_cal_width",
+    accountEmail: "diario_account_email"
   },
 
   get(key) {
@@ -41,6 +42,9 @@ const Store = {
 
   getImagesFolderId() { return this.get(this.KEYS.imagesFolderId); },
   setImagesFolderId(v) { this.set(this.KEYS.imagesFolderId, v); },
+
+  getAccountEmail() { return this.get(this.KEYS.accountEmail); },
+  setAccountEmail(v) { this.set(this.KEYS.accountEmail, v); },
 
   getCalWidth() { return this.get(this.KEYS.calWidth); },
   setCalWidth(v) { this.set(this.KEYS.calWidth, v === "0" ? "0px" : v); }

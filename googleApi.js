@@ -26,12 +26,12 @@ const GoogleApi = {
     return !!this._accessToken && Date.now() < this._tokenExpiry;
   },
 
-  init(clientId, onTokenObtained, onError) {
+  init(clientId, onTokenObtained, onError, accountHint) {
     if (!window.google || !google.accounts || !google.accounts.oauth2) {
       onError("La libreria di accesso Google non e ancora pronta. Ricarica la pagina fra qualche secondo.");
       return;
     }
-    this._tokenClient = google.accounts.oauth2.initTokenClient({
+    const conf = {
       client_id: clientId,
       scope: SCOPES,
       callback: (resp) => {
@@ -47,7 +47,11 @@ const GoogleApi = {
       error_callback: (err) => {
         onError("Accesso annullato o non riuscito: " + (err && err.type ? err.type : ""));
       }
-    });
+    };
+    // Se e' indicato un account, Google lo usa direttamente senza chiedere
+    // ogni volta quale dei tuoi account usare.
+    if (accountHint) conf.hint = accountHint;
+    this._tokenClient = google.accounts.oauth2.initTokenClient(conf);
   },
 
   requestToken(interactive) {
@@ -56,7 +60,10 @@ const GoogleApi = {
     // (interactive) o e' un tentativo silenzioso automatico, cosi chi
     // riceve l'errore sa se mostrare o no un messaggio.
     this._lastInteractive = interactive;
-    this._tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "" });
+    // prompt vuoto SEMPRE: e' Google a decidere se serve mostrare la
+    // schermata dei permessi. Con prompt "consent" la rimostrerebbe a ogni
+    // accesso, anche quando il consenso e' gia' stato dato.
+    this._tokenClient.requestAccessToken({ prompt: "" });
   },
 
   signOut() {

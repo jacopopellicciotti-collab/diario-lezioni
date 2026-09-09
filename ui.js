@@ -18,7 +18,7 @@ const UI = {
       "modifyCancelBtn", "modifySaveBtn",
       "cancelModal", "cancelModalSubtitle", "cancelReason", "cancelNote",
       "cancelCancelBtn", "cancelSaveBtn",
-      "settingsModal", "clientIdInput", "calendarIdInput", "spreadsheetIdInput",
+      "settingsModal", "clientIdInput", "calendarIdInput", "spreadsheetIdInput", "accountEmailInput",
       "settingsHint", "settingsCancelBtn", "settingsSaveBtn",
       "toast"
     ];

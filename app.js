@@ -46,7 +46,8 @@ const App = {
           // e' scaduto. Mostriamo solo il pulsante di accesso manuale.
           UI.els.authBar.hidden = false;
           if (GoogleApi._lastInteractive) UI.toast(msg);
-        }
+        },
+        Store.getAccountEmail()
       );
       // Primo tentativo: accesso "silenzioso", senza popup e senza schermate.
       // Funziona senza che l'utente veda nulla se e' gia' loggato con Google
@@ -210,6 +211,7 @@ const App = {
     UI.els.clientIdInput.value = Store.getClientId();
     UI.els.calendarIdInput.value = Store.getCalendarId();
     UI.els.spreadsheetIdInput.value = Store.getSpreadsheetId();
+    UI.els.accountEmailInput.value = Store.getAccountEmail();
     UI.els.settingsHint.textContent = "";
   },
 
@@ -217,14 +219,16 @@ const App = {
     const clientId = UI.els.clientIdInput.value.trim();
     const calendarId = UI.els.calendarIdInput.value.trim() || "primary";
     const spreadsheetId = UI.els.spreadsheetIdInput.value.trim();
+    const accountEmail = UI.els.accountEmailInput.value.trim();
 
     if (!clientId) {
       UI.els.settingsHint.textContent = "Il Client ID e obbligatorio.";
       return;
     }
 
-    const clientChanged = clientId !== Store.getClientId();
+    const clientChanged = clientId !== Store.getClientId() || accountEmail !== Store.getAccountEmail();
     Store.setClientId(clientId);
+    Store.setAccountEmail(accountEmail);
     Store.setCalendarId(calendarId);
     Store.setSpreadsheetId(spreadsheetId);
 
